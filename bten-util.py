@@ -13,42 +13,77 @@ import serial
 # ------------------------------------------------------------------
 #  1.  CONFIGURATION ------------------------------------------------
 # ------------------------------------------------------------------
-# Change this to the correct device you want to talk to.
-# Examples on Linux/macOS:  "/dev/ttyUSB0", "/dev/ttyACM0"
-# Examples on Windows:     "COM3", "COM4"
-PORT = "/dev/ttyUSB0"          # <- Edit this line
+PORT = "/dev/ttyUSB0"
 
-# Typical serial settings – adjust if your device requires something else
 BAUDRATE = 115200
-TIMEOUT  = 1          # seconds
+TIMEOUT  = 1
+
+CMD_MAGIC_START = 0x42
+CMD_MAGIC_END = 0x24
+STATUS_MAGIC_START = 0x32
+STATUS_MAGIC_END = 0x23
+
+CMD_CODES = {
+    "off": 0,
+    "on": 1,
+    "reboot": 2,
+    "status": 3
+}
+
+NUM_PORTS = 1
+
+VERBOSE = True
 
 # ------------------------------------------------------------------
 #  2.  INPUT PARSING ------------------------------------------------
 # ------------------------------------------------------------------
-if len(sys.argv) != 2 or sys.argv[1].lower() not in {"on", "off"}:
-    print("Usage: {} <on|off>".format(sys.argv[0]), file=sys.stderr)
-    sys.exit(1)
+def print_usage_exit():
+    print("Usage: {} <on|off|reboot|status> <port: 0..{}>".format(sys.argv[0], NUM_PORTS-1))
+    exit(0)
+
+try:
+    if len(sys.argv) != 3:
+        raise ValueError
+    action = sys.argv[1]
+    if action not in CMD_CODES.keys():
+        raise ValueError
+    port = int(sys.argv[2])
+    if port < 0 or port >= NUM_PORTS:
+        raise ValueError
+except ValueError:
+    print_usage_exit()
+
 
 # ------------------------------------------------------------------
 #  3.  BUILD THE COMMAND --------------------------------------------
 # ------------------------------------------------------------------
-# Start marker      : 0x42
-# Status byte (on=01, off=00)
-# Stop marker       : 0x24
-CMD_HEADER = 0x42
-CMD_FOOTER = 0x24
-
-status_byte = 0x01 if sys.argv[1].lower() == "on" else 0x00
-command = bytes([CMD_HEADER, 0x00, status_byte, CMD_FOOTER])
+command = bytes([CMD_MAGIC_START, port, CMD_CODES[action], CMD_MAGIC_END])
 
 # ------------------------------------------------------------------
 #  4.  SEND THE COMMAND ---------------------------------------------
 # ------------------------------------------------------------------
-try:
+
+def serial_cmd():
     with serial.Serial(PORT, BAUDRATE, timeout=TIMEOUT) as ser:
         ser.write(command)
-        ser.flush()          # Ensure it is transmitted before we close
-    print("Sent: {:02X} {:02X} {:02X} {:02X}".format(*command))
+        ser.flush()
+    if VERBOSE:
+        print("Sent: {:02X} {:02X} {:02X} {:02X}".format(*command))
+    if action == "status":
+        bstatus = b''
+        with serial.Serial(PORT, BAUDRATE, timeout=TIMEOUT) as ser:
+            byte = ser.read()
+            while byte != STATUS_MAGIC_START:
+                byte = ser.read()
+            byte = ser.read()
+            while byte != STATUS_MAGIC_END:
+                bstatus += byte
+                byte = ser.read()
+        print(bstatus.decode('utf-8'))
+
+
+try:
+    serial_cmd()
 except FileNotFoundError:
     print("Error: Could not open serial port '{}'".format(PORT), file=sys.stderr)
     sys.exit(1)
