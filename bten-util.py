@@ -9,6 +9,7 @@ Usage:
 
 import sys
 import serial
+import time
 
 # ------------------------------------------------------------------
 #  1.  CONFIGURATION ------------------------------------------------
@@ -33,6 +34,8 @@ CMD_CODES = {
 NUM_PORTS = 1
 
 VERBOSE = False
+
+TIMEOUT = 0.3
 
 # ------------------------------------------------------------------
 #  2.  INPUT PARSING ------------------------------------------------
@@ -77,16 +80,24 @@ def serial_cmd():
         print("Sent: {:02X} {:02X} {:02X} {:02X}".format(*command))
     if action == "status":
         bstatus = b''
+        time_start = time.time()
         try:
             byte = Ser.read()
             while int.from_bytes(byte) != STATUS_MAGIC_START:
                 byte = Ser.read()
+                if time.time() - time_start > TIMEOUT:
+                    raise TimeoutError
             byte = Ser.read()
             while int.from_bytes(byte) != STATUS_MAGIC_END:
                 bstatus += byte
                 byte = Ser.read()
+                if time.time() - time_start > TIMEOUT:
+                    raise TimeoutError
         except KeyboardInterrupt:
             Ser.close()
+            exit(0)
+        except TimeoutError:
+            print("Not responding, operation in progress.")
             exit(0)
         print(bstatus.decode('utf-8'))
     Ser.close()

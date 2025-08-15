@@ -10,6 +10,7 @@ const CMD_CODE_OFF: u8 = 0;
 const CMD_CODE_ON: u8 = 1;
 const CMD_CODE_REBOOT: u8 = 2;
 const CMD_CODE_STATUS: u8 = 3;
+const CMD_MAX_LEN: usize = 4;
 
 use arduino_hal::prelude::*;
 use embedded_hal::digital::{OutputPin, StatefulOutputPin};
@@ -88,10 +89,14 @@ struct Cmd {
 impl Cmd {
     pub fn from_cmdbuf(cmdbuf: &Cmdbuf) -> Result<Self,()> {
         let buf = cmdbuf.get();
-        if buf[0] == CMD_MAGIC_START && buf[buf.len() - 1] == CMD_MAGIC_END && buf.len() == 4 {
+        let mut start: usize = 0;
+        while start < buf.len() && buf[start] != CMD_MAGIC_START { start += 1; }
+        let mut end: usize = start;
+        while end < buf.len() && buf[end] != CMD_MAGIC_END { end += 1; }
+        if end < buf.len() && buf[start] == CMD_MAGIC_START && buf[end] == CMD_MAGIC_END && (end - start) == 3 {
             return Ok(Self {
-                port: buf[1],
-                action: match buf[2] {
+                port: buf[start + 1],
+                action: match buf[start + 2] {
                     CMD_CODE_OFF => Action::Off,
                     CMD_CODE_ON => Action::On,
                     CMD_CODE_REBOOT => Action::Reboot,
@@ -173,6 +178,16 @@ where
         }
     }
 
+    pub fn serial_flush_read(&mut self) {
+        loop {
+            match self.serial.read() {
+                Ok(_) => (),
+                Err(nb::Error::WouldBlock) => return,
+                Err(_) => panic!(),
+            }
+        }
+    }
+
     pub fn serial_writeln(&mut self, string: &str) {
         match ufmt::uwriteln!(self.serial, "{}", string) {
             Ok(_) => (),
@@ -244,6 +259,10 @@ fn main() -> ! {
             } else {
                 port_manager.serial_writeln("    succeeded!\r");
             }
+            cmdbuf.reset();
+            port_manager.serial_flush_read();
+        }
+        else if cmdbuf.get().len() >= CMD_MAX_LEN {
             cmdbuf.reset();
         }
     }
