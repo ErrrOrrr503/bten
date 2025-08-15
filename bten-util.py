@@ -32,7 +32,7 @@ CMD_CODES = {
 
 NUM_PORTS = 1
 
-VERBOSE = True
+VERBOSE = False
 
 # ------------------------------------------------------------------
 #  2.  INPUT PARSING ------------------------------------------------
@@ -40,6 +40,9 @@ VERBOSE = True
 def print_usage_exit():
     print("Usage: {} <on|off|reboot|status> <port: 0..{}>".format(sys.argv[0], NUM_PORTS-1))
     exit(0)
+
+port = -1
+action = ""
 
 try:
     if len(sys.argv) != 3:
@@ -63,24 +66,30 @@ command = bytes([CMD_MAGIC_START, port, CMD_CODES[action], CMD_MAGIC_END])
 #  4.  SEND THE COMMAND ---------------------------------------------
 # ------------------------------------------------------------------
 
+Ser = serial.Serial(None, BAUDRATE, timeout=TIMEOUT)
+Ser.setPort(PORT)
+
 def serial_cmd():
-    with serial.Serial(PORT, BAUDRATE, timeout=TIMEOUT) as ser:
-        ser.write(command)
-        ser.flush()
+    Ser.open()
+    Ser.write(command)
+    Ser.flush()
     if VERBOSE:
         print("Sent: {:02X} {:02X} {:02X} {:02X}".format(*command))
     if action == "status":
         bstatus = b''
-        with serial.Serial(PORT, BAUDRATE, timeout=TIMEOUT) as ser:
-            byte = ser.read()
-            while byte != STATUS_MAGIC_START:
-                byte = ser.read()
-            byte = ser.read()
-            while byte != STATUS_MAGIC_END:
+        try:
+            byte = Ser.read()
+            while int.from_bytes(byte) != STATUS_MAGIC_START:
+                byte = Ser.read()
+            byte = Ser.read()
+            while int.from_bytes(byte) != STATUS_MAGIC_END:
                 bstatus += byte
-                byte = ser.read()
+                byte = Ser.read()
+        except KeyboardInterrupt:
+            Ser.close()
+            exit(0)
         print(bstatus.decode('utf-8'))
-
+    Ser.close()
 
 try:
     serial_cmd()

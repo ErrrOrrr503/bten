@@ -1,9 +1,18 @@
 [general]
-board = "nano"
-# After flashing, open the serial console at 57600 baud.
-open-console = false
-serial-baudrate = 57600
-port = "/dev/ttyUSB0"
+    port = "/dev/ttyUSB0"
 
-# For documentation about this file, check here:
-# https://github.com/Rahix/avr-hal/blob/main/ravedude/README.md#ravedudetoml-format
+[board]
+    name = "optiboot_atmega328p"
+
+    [board.reset]
+    # The board automatically resets when attempting to flash
+    automatic = true
+
+    [board.avrdude]
+    programmer = "arduino"
+    partno = "atmega328p"
+    baudrate = 115200
+    do-chip-erase = true
+
+    [board.usb-info]
+    error = "Not able to guess port"

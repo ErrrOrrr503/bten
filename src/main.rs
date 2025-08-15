@@ -26,18 +26,11 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
     let pins = arduino_hal::pins!(dp);
     let mut led = pins.d13.into_output();
 
-    for _ in 0..10 {
-        led.set_high();
-        arduino_hal::delay_ms(100);
-        led.set_low();
-        arduino_hal::delay_ms(100);
-    }
-
     unsafe {
         // Start configuration sequence
         watchdog.wdtcsr.write(|w| w.bits(0x18));
-        // Set watchdog for 16ms timeout and reset mode
-        watchdog.wdtcsr.write(|w| w.bits(0x08));
+        // Set watchdog for 500ms timeout and reset mode
+        watchdog.wdtcsr.write(|w| w.bits(0x28));
     }
 
     // Wait for reset to occur
@@ -133,7 +126,9 @@ impl<PIN0: StatefulOutputPin, PIN1: StatefulOutputPin, SERIAL> PortManager<PIN0,
 where
     SERIAL: _embedded_hal_serial_Read<u8> + uWrite,
 {
-    pub fn new(pin0: PIN0, pin1: PIN1, serial: SERIAL) -> Self {
+    pub fn new(mut pin0: PIN0, mut pin1: PIN1, serial: SERIAL) -> Self {
+        pin0.set_low().unwrap();
+        pin1.set_low().unwrap();
         Self { pin0, pin1, serial }
     }
 
@@ -210,6 +205,15 @@ where
 #[arduino_hal::entry]
 fn main() -> ! {
     let dp = arduino_hal::Peripherals::take().unwrap();
+    
+    let watchdog = dp.WDT;
+    unsafe {
+        // Start configuration sequence
+        watchdog.wdtcsr.write(|w| w.bits(0x18));
+        // Set watchdog for 500ms timeout and reset mode
+        watchdog.wdtcsr.write(|w| w.bits(0x00));
+    }
+
     let pins = arduino_hal::pins!(dp);
     let mut serial = arduino_hal::default_serial!(dp, pins, 115200);
 
@@ -231,7 +235,9 @@ fn main() -> ! {
             port_manager.serial_write("Cmd received: ");
             port_manager.serial_write(cmd.repr());
             port_manager.serial_writeln("\r");
-            arduino_hal::delay_ms(5000);
+            if cmd.action != Action::Status {
+                arduino_hal::delay_ms(5000);
+            }
             let res = port_manager.process_cmd(&cmd);
             if res == Err(()) {
                 port_manager.serial_writeln("    failed!\r");
